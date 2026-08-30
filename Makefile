@@ -1,10 +1,9 @@
 JAVAC = javac
 JAVA  = java
 
-SRC_PATH = src
 ENTRY = Entry
-SRC = $(shell find src -name '*.java')
-SRC_CLASS = $(shell find src -name '*.class')
+SRC = $(shell find . -name '*.java')
+SRC_CLASS = $(shell find . -name '*.class')
 TEST = $(shell find testcases -name '*.java')
 TEST_CLASS = $(shell find testcases -name '*.class')
 CP1 = .
@@ -17,7 +16,7 @@ compile:
 	$(JAVAC) -cp $(CP1) $(TEST)
 
 run: compile
-	$(JAVA) -cp $(CP1):$(CP2) $(SRC_PATH)/$(ENTRY) $(ARG)
+	$(JAVA) -cp $(CP1):$(CP2) $(ENTRY) $(ARG)
 
 clean:
 	rm -rf $(SRC_CLASS)
