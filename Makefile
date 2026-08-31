@@ -16,7 +16,7 @@ compile:
 	$(JAVAC) -cp $(CP1) $(TEST)
 
 run: compile
-	$(JAVA) -cp $(CP1):$(CP2) $(ENTRY) $(ARG)
+	$(JAVA) -cp $(CP1):$(CP2) $(ENTRY) $(PRECISION_LVL) $(CLASS_NAME)
 
 clean:
 	rm -rf $(SRC_CLASS)
