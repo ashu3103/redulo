@@ -3,10 +3,8 @@ import java.util.*;
 import soot.*;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Iterator;
 import java.util.List;
 
 import soot.toolkits.graph.DirectedGraph;
@@ -17,7 +15,6 @@ import soot.toolkits.scalar.BoundedFlowSet;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.FlowUniverse;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
-import soot.jimple.FieldRef;
 import soot.jimple.InstanceFieldRef;
 import soot.jimple.Stmt;
 import soot.SootField;
@@ -58,14 +55,17 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
 
     }
 
+    protected final Integer precision;
     protected final Map<Unit, FlowSet<FieldRefKey>> unitToKillSet;
     protected final Map<Unit, FlowSet<FieldRefKey>> unitToGenerateSet;
     protected final FlowSet<FieldRefKey> emptySet;
     private final List<FieldRefKey> universe;
 
 
-    public RedundantFieldEliminationAnalysis(DirectedGraph<Unit> dg) {
+    public RedundantFieldEliminationAnalysis(DirectedGraph<Unit> dg, int precision) {
         super(dg);
+
+        this.precision = Integer.valueOf(precision);
         // Universe of all field references that appear anywhere in the body.
         LinkedHashSet<FieldRefKey> fieldRefs = new LinkedHashSet<>();
         /* we need a universe of all field references */
@@ -89,7 +89,14 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
         this.unitToGenerateSet = new HashMap<>(g.size() * 2 + 1, 0.7f);
 
         /* create gen set for the CFG */
-        buildKillGenSets(g);
+        switch (this.precision.intValue()) {
+            case 1:
+                buildKillGenSets(g);
+                break;
+            default:
+                buildKillGenSets(g); // by default go with lowest precision
+                break;
+        }
 
         doAnalysis();
     }
