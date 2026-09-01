@@ -1,12 +1,6 @@
 
 import java.util.*;
 import soot.*;
-
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.List;
-
 import soot.toolkits.graph.DirectedGraph;
 import soot.toolkits.graph.UnitGraph;
 import soot.toolkits.scalar.ArrayFlowUniverse;
@@ -16,51 +10,18 @@ import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.FlowUniverse;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
 import soot.jimple.InstanceFieldRef;
+import soot.jimple.InvokeExpr;
+import soot.jimple.InvokeStmt;
 import soot.jimple.Stmt;
-import soot.SootField;
-import soot.Unit;
 
-public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit, FlowSet<RedundantFieldEliminationAnalysis.FieldRefKey>> {
-    /** Identifies a specific "base.field" reference for caching purposes. */
-    public static final class FieldRefKey {
-        final Value base;
-        final SootField field;
- 
-        FieldRefKey(Value base, SootField field) {
-            this.base = base;
-            this.field = field;
-        }
- 
-        @Override
-        public boolean equals(Object o) {
-            if (!(o instanceof FieldRefKey)) {
-                return false;
-            }
-            FieldRefKey other = (FieldRefKey) o;
-            return base.equivTo(other.base) && field.equals(other.field);
-        }
-
-        @Override
-        public int hashCode() {
-            // We can't derive a hash consistent with equivTo() for an
-            // arbitrary Value, so we only hash on the field. This is still
-            // correct (equal objects hash equal), just coarser-grained.
-            return 31 * field.hashCode();
-        }
- 
-        @Override
-        public String toString() {
-            return base + "." + field.getSignature();
-        }
-
-    }
-
+public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit, FlowSet<FieldRefKey>> {
     protected final Integer precision;
     protected final Map<Unit, FlowSet<FieldRefKey>> unitToKillSet;
     protected final Map<Unit, FlowSet<FieldRefKey>> unitToGenerateSet;
     protected final FlowSet<FieldRefKey> emptySet;
     private final List<FieldRefKey> universe;
 
+    protected final Map<FieldRefKey, Value> loadedValueMap;
 
     public RedundantFieldEliminationAnalysis(DirectedGraph<Unit> dg, int precision) {
         super(dg);
@@ -85,6 +46,7 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
         FlowUniverse<FieldRefKey> fieldRefsUniv = new ArrayFlowUniverse<>(universe.toArray(new FieldRefKey[0]));
         this.emptySet = new ArrayPackedSet<>(fieldRefsUniv);
 
+        this.loadedValueMap = new HashMap<>(g.size(), 0.7f);
         this.unitToKillSet = new HashMap<>(g.size() * 2 + 1, 0.7f);
         this.unitToGenerateSet = new HashMap<>(g.size() * 2 + 1, 0.7f);
 
@@ -101,7 +63,21 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
         doAnalysis();
     }
 
+    private boolean IsConstructor(InvokeStmt stmt) {
+        InvokeExpr expr  = stmt.getInvokeExpr();
+        SootMethod m = expr.getMethod();
+        if ("<init>".equals(m.getName())) {
+            return true;
+        }
+        return false;
+    }
+
     private void buildKillGenSets(UnitGraph g) {
+        System.out.println("-".repeat(126));
+        System.out.printf("%-60s | %-30s | %-30s%n",
+        "Unit", "Kill", "Gen");
+
+        System.out.println("-".repeat(126));
         for (Unit u: (g.getBody().getUnits())) {
             FlowSet<FieldRefKey> kill = this.emptySet.clone();
             FlowSet<FieldRefKey> gen  = this.emptySet.clone();
@@ -109,10 +85,8 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
             Stmt stmt = (Stmt) u;
             boolean hasInvoke = stmt.containsInvokeExpr();
 
-            if (hasInvoke) {
-                // Conservative: a call can write to any object's fields, so
-                // nothing survives across it, and nothing it reads can be
-                // trusted as "available" once it returns.
+            if (hasInvoke && !IsConstructor((InvokeStmt)stmt)) {
+                // skip the constructors and methods that take no arguments
                 for (FieldRefKey k : universe) {
                     kill.add(k);
                 }
@@ -153,6 +127,10 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
 
             unitToKillSet.put(u, kill);
             unitToGenerateSet.put(u, gen);
+            System.out.printf("%-60s | %-30s | %-30s%n",
+                u.toString(),
+                kill.toString(),
+                gen.toString());
         }
     }
 
