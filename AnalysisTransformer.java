@@ -3,6 +3,7 @@ import java.util.*;
 import soot.*;
 import soot.toolkits.graph.UnitGraph;
 import soot.toolkits.graph.BriefUnitGraph;
+import soot.tagkit.LineNumberTag;
 
 public class AnalysisTransformer extends BodyTransformer {
     protected int precision;
@@ -15,6 +16,5 @@ public class AnalysisTransformer extends BodyTransformer {
     protected void internalTransform(Body body, String phaseName, Map<String, String> options) {
         UnitGraph ug = new BriefUnitGraph(body);
         RedundantFieldEliminationAnalysis analysis = new RedundantFieldEliminationAnalysis(ug, this.precision);
-    }
 }
 

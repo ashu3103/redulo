@@ -1,4 +1,3 @@
-
 import java.util.*;
 import soot.*;
 import soot.toolkits.graph.DirectedGraph;
@@ -9,6 +8,7 @@ import soot.toolkits.scalar.BoundedFlowSet;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.FlowUniverse;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
+import soot.jimple.AssignStmt;
 import soot.jimple.InstanceFieldRef;
 import soot.jimple.InvokeExpr;
 import soot.jimple.InvokeStmt;
@@ -21,7 +21,7 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
     protected final FlowSet<FieldRefKey> emptySet;
     private final List<FieldRefKey> universe;
 
-    protected final Map<FieldRefKey, Value> loadedValueMap;
+    protected final Map<String, String> valueToLocalMap;
 
     public RedundantFieldEliminationAnalysis(DirectedGraph<Unit> dg, int precision) {
         super(dg);
@@ -46,7 +46,7 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
         FlowUniverse<FieldRefKey> fieldRefsUniv = new ArrayFlowUniverse<>(universe.toArray(new FieldRefKey[0]));
         this.emptySet = new ArrayPackedSet<>(fieldRefsUniv);
 
-        this.loadedValueMap = new HashMap<>(g.size(), 0.7f);
+        this.valueToLocalMap = new HashMap<>(g.size(), 0.7f);
         this.unitToKillSet = new HashMap<>(g.size() * 2 + 1, 0.7f);
         this.unitToGenerateSet = new HashMap<>(g.size() * 2 + 1, 0.7f);
 
@@ -61,15 +61,6 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
         }
 
         doAnalysis();
-    }
-
-    private boolean IsConstructor(InvokeStmt stmt) {
-        InvokeExpr expr  = stmt.getInvokeExpr();
-        SootMethod m = expr.getMethod();
-        if ("<init>".equals(m.getName())) {
-            return true;
-        }
-        return false;
     }
 
     private void buildKillGenSets(UnitGraph g) {
@@ -90,39 +81,55 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
                 for (FieldRefKey k : universe) {
                     kill.add(k);
                 }
+            } else if (stmt instanceof AssignStmt) {
+                /* Field references */
+                Value use = u.getUseBoxes().get(0).getValue();
+                Value def = u.getDefBoxes().get(0).getValue();
+                if (def instanceof Local) {
+                    use = u.getUseBoxes().get(0).getValue();
+                } else {
+                    use = u.getUseBoxes().get(1).getValue();
+                }
+                
+                if (use instanceof InstanceFieldRef && def instanceof Local) {
+                    InstanceFieldRef useRef = (InstanceFieldRef)use;
+                    Local defL = (Local)def;
+                    
+                    FieldRefKey frk = new FieldRefKey(useRef.getBase(), useRef.getField());
+                    /* if base of use points to something make an indirection from  */
+                    if (valueToLocalMap.get(useRef.getBase().toString()) != null) {
+                        String p = valueToLocalMap.get(useRef.getBase().toString());
+                        if (!IsStackLocal(defL)) {
+                            frk.setLocalAndValue(p + "." + useRef.getField().getSignature(), defL.toString());
+                        }
+                    } else if (valueToLocalMap.get(useRef.toString()) != null) {
+                        String p = valueToLocalMap.get(useRef.toString());
+                        frk.setLocalAndValue(defL.toString(), p);
+                    } else {
+                        if (!IsStackLocal(defL)) {
+                            frk.setLocalAndValue(useRef.toString(), defL.toString());
+                        }
+                    }
+                    
+                    gen.add(frk);
+                } else if (def instanceof InstanceFieldRef && use instanceof Local) {
+                    InstanceFieldRef defRef = (InstanceFieldRef)def;
+                    Local useL = (Local)use;
+                    // System.out.println(useL.toString());
+                    // System.out.println(valueToLocalMap.get(useL.toString()));
+                    FieldRefKey frk = new FieldRefKey(defRef.getBase(), defRef.getField());
+                    if (valueToLocalMap.get(useL.toString()) != null) {
+                        String p = valueToLocalMap.get(useL.toString());
+                        frk.setLocalAndValue(defRef.toString(), p);
+                        gen.add(frk);
+                    } else {
+                        kill.add(frk);
+                    }
+                } else {
+                    // Do nothing
+                }
             } else {
-                // Field reads (uses) become available after this unit.
-                for (ValueBox b : u.getUseBoxes()) {
-                    Value v = b.getValue();
-                    if (v instanceof InstanceFieldRef) {
-                        InstanceFieldRef ref = (InstanceFieldRef) v;
-                        gen.add(new FieldRefKey(ref.getBase(), ref.getField()));
-                    }
-                }
-            }
-
-            // Defs: field writes and local reassignments.
-            for (ValueBox b : u.getDefBoxes()) {
-                Value v = b.getValue();
-                if (v instanceof InstanceFieldRef) {
-                    InstanceFieldRef ref = (InstanceFieldRef) v;
-                    for (FieldRefKey k : universe) {
-                        // Conservative: The base may alias to other locals, for example:
-                        // b = a
-                        // b.f1 = ...
-                        // c = a.f1
-                        if (k.field.equals(ref.getField())) {
-                            kill.add(k);
-                        }
-                    }
-                    gen.add(new FieldRefKey(ref.getBase(), ref.getField()));
-                } else if (v instanceof Local) {
-                    for (FieldRefKey k : universe) {
-                        if (k.base.equivTo(v)) {
-                            kill.add(k);
-                        }
-                    }
-                }
+                // do nothing
             }
 
             unitToKillSet.put(u, kill);
@@ -132,6 +139,30 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
                 kill.toString(),
                 gen.toString());
         }
+    }
+
+    private boolean IsStackLocal(Value v) {
+        if (v instanceof Local) {
+            Local l = (Local) v;
+            return l.isStackLocal();
+        }
+        return false;
+    }
+
+    private boolean IsConstructor(InvokeStmt stmt) {
+        InvokeExpr expr  = stmt.getInvokeExpr();
+        SootMethod m = expr.getMethod();
+        if ("<init>".equals(m.getName())) {
+            return true;
+        }
+        return false;
+    }
+
+    private FieldRefKey getFieldRefKeyFromFlowSet(FlowSet<FieldRefKey> s, FieldRefKey k) {
+        for (FieldRefKey ks: s) {
+            if (ks.equals(k)) return ks;
+        }
+        return null;
     }
 
     @Override
@@ -151,16 +182,37 @@ public class RedundantFieldEliminationAnalysis extends ForwardFlowAnalysis<Unit,
         // remove killed references from the in
         in.intersection(unitToKillSet.get(u), out);
         // add generated references to the out set
-        out.union(unitToGenerateSet.get(u));
+        FlowSet<FieldRefKey> unionSet = unitToGenerateSet.get(u);
+        for (FieldRefKey k : unionSet) {
+            out.remove(k);
+            out.add(k);
+        }
     }
 
     @Override
     protected void merge(FlowSet<FieldRefKey> out1, FlowSet<FieldRefKey> out2, FlowSet<FieldRefKey> in) {
         out1.intersection(out2, in);  // references should have been loaded along all paths to program point
+
+        for (FieldRefKey k: in) {
+            String base = k.toStringBase();
+            String ref = k.toString();
+
+            FieldRefKey out1Frk = getFieldRefKeyFromFlowSet(out1, k);
+            FieldRefKey out2Frk = getFieldRefKeyFromFlowSet(out2, k);
+
+            if (out1Frk.getLocalFromValue(base) == out2Frk.getLocalFromValue(base) || out1Frk.getLocalFromValue(ref) == out2Frk.getLocalFromValue(ref)) {
+                valueToLocalMap.putAll(k.localValueToLocalMap);
+            }
+        }
+
     }
 
     @Override
     protected void copy(FlowSet<FieldRefKey> out, FlowSet<FieldRefKey> in) {
-        out.copy(in);
+        in = emptySet.clone();
+        for (FieldRefKey k: out) {
+            valueToLocalMap.putAll(k.localValueToLocalMap);
+            in.add(k);
+        }
     }
 }
