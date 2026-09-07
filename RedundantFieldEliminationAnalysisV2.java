@@ -232,7 +232,7 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
             return null;
 
         for (Edge edge: edges) {
-            if (edge.getField().equals(f) && edge.getSrc().equals(obj)) {
+            if (edge.getField() != null && edge.getField().equals(f) && edge.getSrc().equals(obj)) {
                 return (HeapObject)edge.getDst();
             }
         }
@@ -335,7 +335,6 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
                 // Do nothing
             }
         }
-        System.out.println("From Inside: | Unit: " + u + " | IN: " + in + " | OUT: " + out);
     }
 
     @Override
