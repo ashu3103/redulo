@@ -7,6 +7,7 @@ import java.util.Set;
 
 import soot.Local;
 import soot.SootField;
+import soot.SootMethod;
 import soot.Unit;
 import soot.Value;
 import soot.ValueBox;
@@ -21,11 +22,11 @@ import soot.toolkits.graph.DirectedGraph;
 import soot.toolkits.graph.UnitGraph;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
 
-abstract class Node {
+abstract class NodePA {
     public String toString() { return "#Node"; }
 }
 
-class LocalNode extends Node {
+class LocalNode extends NodePA {
     private final Local local;
 
     LocalNode(Local local) {
@@ -61,7 +62,7 @@ class LocalNode extends Node {
     }
 }
 
-class HeapObject extends Node {
+class HeapObject extends NodePA {
     private final Unit allocationSite;
 
     HeapObject(Unit u) {
@@ -95,18 +96,18 @@ class HeapObject extends Node {
 }
 
 class Edge {
-    private final Node src;
+    private final NodePA src;
     private final SootField field;  // null means point-to edge
-    private final Node dst;
+    private final NodePA dst;
 
-    Edge(Node src, SootField f, Node dst) {
+    Edge(NodePA src, SootField f, NodePA dst) {
         this.src = src;
         this.field = f;
         this.dst = dst;
     }
 
-    public Node getSrc() { return this.src; }
-    public Node getDst() { return this.dst; }
+    public NodePA getSrc() { return this.src; }
+    public NodePA getDst() { return this.dst; }
     public SootField getField() { return this.field; }
 
     @Override
@@ -162,8 +163,8 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
     }
 
     private void killAllReachableObjects(Set<Edge> edges, Set<Local> arguments) {
-        Set<Node> worklist = new HashSet<>();
-        Set<Node> visited = new HashSet<>();
+        Set<NodePA> worklist = new HashSet<>();
+        Set<NodePA> visited = new HashSet<>();
 
         for (Edge edge : edges) {
             if (edge.getField() == null &&
@@ -177,7 +178,7 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
         }
 
         while (!worklist.isEmpty()) {
-            Node object = worklist.iterator().next();
+            NodePA object = worklist.iterator().next();
             worklist.remove(object);
             if (!visited.add(object))
                 continue;
@@ -206,10 +207,11 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
     }
 
     private void killLocalPointsToByField(Set<Edge> edges, HeapObject obj, SootField f) {
-        if (obj == null)
+        if (obj == null || f == null)
             return;
 
         edges.removeIf(edge ->
+            edge.getField() != null &&
             edge.getField().equals(f) &&
             edge.getSrc().equals(obj)
         );
@@ -237,6 +239,15 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
         return null;
     }
 
+    private boolean IsConstructor(InvokeStmt stmt) {
+        InvokeExpr expr  = stmt.getInvokeExpr();
+        SootMethod m = expr.getMethod();
+        if ("<init>".equals(m.getName())) {
+            return true;
+        }
+        return false;
+    }
+
     @Override
     protected Set<Edge> newInitialFlow() {
         Set<Edge> out = new HashSet<>(this.emptySet);
@@ -250,13 +261,17 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
     }
 
     @Override
-    protected void flowThrough(Set<Edge> out, Unit u, Set<Edge> in) {
-        this.copy(out, in);
+    protected void flowThrough(Set<Edge> in, Unit u, Set<Edge> out) {
+        this.copy(in, out);
 
         Stmt stmt = (Stmt) u;
         if (stmt instanceof InvokeStmt) {
             // Assume everything that goes inside a function is modified and so is everything reachable by the arguments
             InvokeExpr invokeExpr = stmt.getInvokeExpr();
+            if (IsConstructor((InvokeStmt)stmt)) {
+                return;
+            }
+
             Set<Local> arguments = new HashSet<>();
 
             for (ValueBox box : invokeExpr.getUseBoxes()) {
@@ -320,18 +335,19 @@ public class RedundantFieldEliminationAnalysisV2 extends ForwardFlowAnalysis<Uni
                 // Do nothing
             }
         }
+        System.out.println("From Inside: | Unit: " + u + " | IN: " + in + " | OUT: " + out);
     }
 
     @Override
-    protected void merge(Set<Edge> out1, Set<Edge> out2, Set<Edge> in) {
-        in.clear();
-        in.addAll(out1);
-        in.retainAll(out2);
+    protected void merge(Set<Edge> in1, Set<Edge> in2, Set<Edge> out) {
+        out.clear();
+        out.addAll(in1);
+        out.retainAll(in2);
     }
 
     @Override
-    protected void copy(Set<Edge> out, Set<Edge> in) {
-        in.clear();
-        in.addAll(out);
+    protected void copy(Set<Edge> in, Set<Edge> out) {
+        out.clear();
+        out.addAll(in);
     }
 }
