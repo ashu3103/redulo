@@ -1,0 +1,4 @@
+Test:main
+18:$r0.<Node: Node f1> r4
+19:r7.<Node: Node f2> r5
+20:r8.<Node: Node f1> r6

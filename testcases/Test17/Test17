@@ -1,0 +1,6 @@
+Test:bar
+33:$r0.<Node: int f2> i0
+Test:foo
+25:$r0.<Node: Node f1> r2
+Test:main
+14:$r8.<Node: Node f1> r6
