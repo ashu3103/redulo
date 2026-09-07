@@ -13,7 +13,7 @@ public class AnalysisTransformer extends BodyTransformer {
     @Override
     protected void internalTransform(Body body, String phaseName, Map<String, String> options) {
         UnitGraph ug = new BriefUnitGraph(body);
-        RedundantFieldEliminationAnalysisV2 analysis = new RedundantFieldEliminationAnalysisV2(ug);
+        MustPointsToAnalysis analysis = new MustPointsToAnalysis(ug);
 
         System.out.println("Method: " + body.getMethod().getName());
         for (Unit u: body.getUnits()) {
