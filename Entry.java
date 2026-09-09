@@ -4,12 +4,12 @@ import soot.options.Options;
 public class Entry {
     public static void main(String[] args) {
         // Check if the required number of arguments provided
-        if (args.length < 2) {
-            System.out.println("Usage: java [options] Entry [precision] [class-name]");
+        if (args.length < 1) {
+            System.out.println("Usage: java [options] Entry [class-name]");
             System.exit(1);
         }
         
-        String classPath = "./testcases/" + args[1];
+        String classPath = "./testcases/" + args[0];
     
         // Set up arguments for Soot
         String[] sootArgs = {
@@ -17,12 +17,12 @@ public class Entry {
             "-pp",  // sets the class path for Soot
             "-f", "J",
             "-t", "1",
-            "-main-class", args[1], // specify the main class
+            "-main-class", args[0], // specify the main class
             "-process-dir", classPath
         };
 
         // create transformer for analysis
-        AnalysisTransformer analysisTransformer = new AnalysisTransformer(Integer.parseInt(args[0]));
+        AnalysisTransformer analysisTransformer = new AnalysisTransformer();
         // Add transformer to the appropriate pack in PackManager; PackManager will run all packs when soot.Main.main is called
         PackManager.v().getPack("jtp").add(new Transform("jtp.dfa", analysisTransformer));
         // Set Soot options
