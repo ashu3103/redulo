@@ -1,11 +1,14 @@
 JAVAC = javac
 JAVA  = java
 
+CLASS_NAME ?= Test1
+TEST_DIR = testcases/$(CLASS_NAME)
+
 ENTRY = Entry
-SRC = $(shell find . -name '*.java')
+SRC = $(shell find . -maxdepth 1 -name '*.java')
 SRC_CLASS = $(shell find . -name '*.class')
-TEST = $(shell find testcases -name '*.java')
-TEST_CLASS = $(shell find testcases -name '*.class')
+TEST = $(shell find $(TEST_DIR) -name '*.java')
+TEST_CLASS = $(shell find $(TEST_DIR) -name '*.class')
 CP1 = .
 CP2 = lib/soot-4.6.0-jar-with-dependencies.jar
 
@@ -16,7 +19,7 @@ compile:
 	$(JAVAC) -cp $(CP1) $(TEST)
 
 run: compile
-	$(JAVA) -cp $(CP1):$(CP2) $(ENTRY) $(PRECISION_LVL) $(CLASS_NAME)
+	$(JAVA) -cp $(CP1):$(CP2) $(ENTRY) $(CLASS_NAME)
 
 clean:
 	rm -rf $(SRC_CLASS)
