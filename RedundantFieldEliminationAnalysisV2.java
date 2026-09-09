@@ -10,6 +10,7 @@ import soot.Unit;
 import soot.Value;
 import soot.jimple.AssignStmt;
 import soot.jimple.InstanceFieldRef;
+import soot.jimple.InvokeExpr;
 import soot.jimple.InvokeStmt;
 import soot.jimple.NewExpr;
 import soot.jimple.Stmt;
@@ -61,9 +62,12 @@ public class RedundantFieldEliminationAnalysisV2 {
 
             Stmt stmt = (Stmt)u;
             boolean hasInvoke = stmt.containsInvokeExpr();
-
-            if (hasInvoke && !mpta.IsConstructor((InvokeStmt)stmt)) {
-                this.loadedObjctToLocalMap.clear();
+            // System.out.println(u);
+            if (hasInvoke) {
+                InvokeExpr expr = stmt.getInvokeExpr();
+                if (!mpta.IsConstructor(expr)) {
+                    this.loadedObjctToLocalMap.clear();
+                }
             } else if (stmt instanceof AssignStmt) {
                 /* Field references */
                 AssignStmt assign = (AssignStmt) stmt;
