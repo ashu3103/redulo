@@ -134,28 +134,33 @@ class Edge {
     }
 }
 
-public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
-    protected final Set<Edge> emptySet;
-
-    public MustPointsToAnalysis(DirectedGraph<Unit> dg) {
-        super(dg);
-        // Universe of all field references that appear anywhere in the body.
-        LinkedHashSet<Value> fieldRefs = new LinkedHashSet<>();
-        /* we need a universe of all field references */
-        final UnitGraph g = (UnitGraph) dg;
-        for (Unit u : g.getBody().getUnits()) {
-            for (ValueBox box : u.getUseAndDefBoxes()) {
-                Value v = box.getValue();
-                if (v instanceof InstanceFieldRef) {
-                    InstanceFieldRef ref = (InstanceFieldRef) v;
-                    fieldRefs.add(ref);
-                }
-            }
+class PTState {
+    Set<Edge> edges = new HashSet<>();
+    boolean top = true;
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
         }
 
-        /* initialize the emptySet */
-        this.emptySet = new HashSet<>();
+        if (!(o instanceof PTState)) {
+            return false;
+        }
 
+        PTState other = (PTState) o;
+
+        return this.top == other.top && this.edges.equals(other.edges);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(top, edges);
+    }
+}
+
+public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, PTState> {
+    public MustPointsToAnalysis(DirectedGraph<Unit> dg) {
+        super(dg);
         // Do analysis
         doAnalysis();
     }
@@ -237,8 +242,7 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
         return null;
     }
 
-    public boolean IsConstructor(InvokeStmt stmt) {
-        InvokeExpr expr  = stmt.getInvokeExpr();
+    public boolean IsConstructor(InvokeExpr expr) {
         SootMethod m = expr.getMethod();
         if ("<init>".equals(m.getName())) {
             return true;
@@ -247,26 +251,34 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
     }
 
     @Override
-    protected Set<Edge> newInitialFlow() {
-        Set<Edge> out = new HashSet<>(this.emptySet);
-        return out;
+    protected PTState newInitialFlow() {
+        PTState pts = new PTState();
+        pts.top = true;
+        return pts;
     }
 
     @Override
-    protected Set<Edge> entryInitialFlow() {
-        Set<Edge> out = new HashSet<>(this.emptySet);
-        return out;
+    protected PTState entryInitialFlow() {
+        PTState pts = new PTState();
+        pts.top = false;
+        return pts;
     }
 
     @Override
-    protected void flowThrough(Set<Edge> in, Unit u, Set<Edge> out) {
-        this.copy(in, out);
+    protected void flowThrough(PTState in, Unit u, PTState out) {
+        if (in.top) {
+            out.top = true;
+            out.edges.clear();
+            return;
+        }
+
+        copy(in, out);
 
         Stmt stmt = (Stmt) u;
         if (stmt instanceof InvokeStmt) {
             // Assume everything that goes inside a function is modified and so is everything reachable by the arguments
             InvokeExpr invokeExpr = stmt.getInvokeExpr();
-            if (IsConstructor((InvokeStmt)stmt)) {
+            if (IsConstructor(invokeExpr)) {
                 return;
             }
 
@@ -280,7 +292,7 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
                 }
             }
 
-            killAllReachableObjects(out, arguments);
+            killAllReachableObjects(out.edges, arguments);
         } else if (stmt instanceof AssignStmt) {
             AssignStmt assign = (AssignStmt) stmt;
             Value lhs = assign.getLeftOp();
@@ -290,45 +302,45 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
                 HeapObject obj = new HeapObject(u);
                 // remove all the reference of lhs from graph
                 Local l = (Local) lhs;
-                killLocalPointsTo(out, l);
+                killLocalPointsTo(out.edges, l);
                 // add a pointer from l to new object
                 LocalNode ln = new LocalNode(l);
-                out.add(new Edge(ln, null, obj));
+                out.edges.add(new Edge(ln, null, obj));
             } else if (rhs instanceof Local && lhs instanceof Local) {  // r1 = r2
                 // remove all the reference of lhs from graph
                 Local l = (Local) lhs;
                 Local r = (Local) rhs;
-                killLocalPointsTo(out, l);
+                killLocalPointsTo(out.edges, l);
                 // add an edge from l to object pointed to by rhs
                 LocalNode ln = new LocalNode(l);
-                HeapObject obj = objectPointedToByLocal(out, r);
+                HeapObject obj = objectPointedToByLocal(out.edges, r);
                 if (obj != null)
-                    out.add(new Edge(ln, null, obj));
+                    out.edges.add(new Edge(ln, null, obj));
             } else if (rhs instanceof InstanceFieldRef && lhs instanceof Local) { // r1 = r2.f
                 // remove all the reference of lhs from graph
                 Local l = (Local) lhs;
                 InstanceFieldRef r = (InstanceFieldRef) rhs;
-                killLocalPointsTo(out, l);
+                killLocalPointsTo(out.edges, l);
                 // add an edge from l to object pointed to by r2.f
                 LocalNode ln = new LocalNode(l);
                 SootField f = r.getField();
                 Local base = (Local)r.getBase();
-                HeapObject obj = objectPointedToByLocal(out, base);
-                HeapObject obj2 = objectPointedToByField(out, obj, f);
+                HeapObject obj = objectPointedToByLocal(out.edges, base);
+                HeapObject obj2 = objectPointedToByField(out.edges, obj, f);
                 if (obj2 != null)
-                    out.add(new Edge(ln, null, obj2));
+                    out.edges.add(new Edge(ln, null, obj2));
             } else if (rhs instanceof Local && lhs instanceof InstanceFieldRef) {  // r1.f = r2
                 // remove all the reference of the lhs from graph
                 Local r = (Local) rhs;
                 InstanceFieldRef ref = (InstanceFieldRef) lhs;
                 SootField f = ref.getField();
                 Local base = (Local) ref.getBase();
-                HeapObject obj1 = objectPointedToByLocal(out, base);
-                killLocalPointsToByField(out, obj1, f);
+                HeapObject obj1 = objectPointedToByLocal(out.edges, base);
+                killLocalPointsToByField(out.edges, obj1, f);
                 // add the object pointed to by r2
-                HeapObject obj2 = objectPointedToByLocal(out, r);
+                HeapObject obj2 = objectPointedToByLocal(out.edges, r);
                 if (obj1 != null && obj2 != null)
-                    out.add(new Edge(obj1, f, obj2));
+                    out.edges.add(new Edge(obj1, f, obj2));
             } else {
                 // Do nothing
             }
@@ -336,15 +348,27 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
     }
 
     @Override
-    protected void merge(Set<Edge> in1, Set<Edge> in2, Set<Edge> out) {
-        out.clear();
-        out.addAll(in1);
-        out.retainAll(in2);
+    protected void merge(PTState in1, PTState in2, PTState out) {
+        if (in1.top) {
+            copy(in2, out);
+            return;
+        }
+
+        if (in2.top) {
+            copy(in1, out);
+            return;
+        }
+
+        out.top = false;
+        out.edges.clear();
+        out.edges.addAll(in1.edges);
+        out.edges.retainAll(in2.edges);
     }
 
     @Override
-    protected void copy(Set<Edge> in, Set<Edge> out) {
-        out.clear();
-        out.addAll(in);
+    protected void copy(PTState in, PTState out) {
+        out.top = in.top;
+        out.edges.clear();
+        out.edges.addAll(in.edges);
     }
 }
