@@ -215,7 +215,7 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
         );
     }
 
-    private HeapObject objectPointedToByLocal(Set<Edge> edges, Local a) {
+    public HeapObject objectPointedToByLocal(Set<Edge> edges, Local a) {
         LocalNode ln = new LocalNode(a);
         for (Edge edge : edges) {
             if (edge.getField() == null && edge.getSrc().equals(ln)) {
@@ -225,8 +225,8 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
         return null;
     }
 
-    private HeapObject objectPointedToByField(Set<Edge> edges, HeapObject obj, SootField f) {
-        if (obj == null)
+    public HeapObject objectPointedToByField(Set<Edge> edges, HeapObject obj, SootField f) {
+        if (obj == null || f == null)
             return null;
 
         for (Edge edge: edges) {
@@ -237,7 +237,7 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
         return null;
     }
 
-    private boolean IsConstructor(InvokeStmt stmt) {
+    public boolean IsConstructor(InvokeStmt stmt) {
         InvokeExpr expr  = stmt.getInvokeExpr();
         SootMethod m = expr.getMethod();
         if ("<init>".equals(m.getName())) {
@@ -286,7 +286,7 @@ public class MustPointsToAnalysis extends ForwardFlowAnalysis<Unit, Set<Edge>> {
             Value lhs = assign.getLeftOp();
             Value rhs = assign.getRightOp();
 
-            if (rhs instanceof NewExpr && lhs instanceof  Local) {    // a = new A
+            if (rhs instanceof NewExpr && lhs instanceof Local) {    // a = new A
                 HeapObject obj = new HeapObject(u);
                 // remove all the reference of lhs from graph
                 Local l = (Local) lhs;
