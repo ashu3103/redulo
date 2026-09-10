@@ -53,10 +53,9 @@ This is tested only for openjdk 11 given the soot version (4.6.0) in the library
 
 ```
 git clone https://github.com/ashu3103/redulo
-make run PRECISION_LVL=1 CLASS_NAME=Test1
+make run CLASS_NAME=Test1
 ```
 
-`PRECISION_LVL` should be 1 (no better optimization levels are supported currently)
 `CLASS_NAME` should be the name of any one of the subdirectory in testcases.
 
 
